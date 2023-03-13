@@ -35,13 +35,14 @@ async function extractLoader(src) {
             src,
             filename: this.resourcePath,
             publicPath,
+            inlineDependencyLoaders: options.inlineDependencyLoaders || "",
         }));
     } catch (error) {
         done(error);
     }
 }
 
-function evalDependencyGraph({loaderContext, src, filename, publicPath = ""}) {
+function evalDependencyGraph({loaderContext, src, filename, publicPath = "", inlineDependencyLoaders}) {
     const moduleCache = new Map();
 
     function loadModule(filename) {
@@ -135,7 +136,7 @@ function evalDependencyGraph({loaderContext, src, filename, publicPath = ""}) {
 
                 // If the required file is a js file, we just require it with node's require.
                 // If the required file should be processed by a loader we do not touch it (even if it is a .js file).
-                if (loaders === "" && ext === ".js") {
+                if (shouldLoadAsCjs(loaders, ext, absolutePath)) {
                     // Mark the file as dependency so webpack's watcher is working for the css-loader helper.
                     // Other dependencies are automatically added by loadModule() below
                     loaderContext.addDependency(absolutePath);
@@ -148,12 +149,9 @@ function evalDependencyGraph({loaderContext, src, filename, publicPath = ""}) {
                 }
 
                 const rndPlaceholder = "__EXTRACT_LOADER_PLACEHOLDER__" + rndNumber() + rndNumber();
+                const absoluteRequest = (loaders ? loaders : inlineDependencyLoaders) + absolutePath + query;
 
-                newDependencies.push({
-                    absolutePath,
-                    absoluteRequest: loaders + absolutePath + query,
-                    rndPlaceholder,
-                });
+                newDependencies.push({absolutePath, absoluteRequest, rndPlaceholder});
 
                 return rndPlaceholder;
             },
@@ -181,6 +179,10 @@ function evalDependencyGraph({loaderContext, src, filename, publicPath = ""}) {
     }
 
     return evalModule(src, filename);
+}
+
+function shouldLoadAsCjs(loaders, ext, absolutePath) {
+    return loaders === "" && ext === ".js" && absolutePath.includes("node_modules");
 }
 
 /**
